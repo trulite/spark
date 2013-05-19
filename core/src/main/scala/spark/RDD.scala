@@ -714,6 +714,35 @@ abstract class RDD[T: ClassManifest](
   }
 
   /**
+   * Drop the first drop elements and then take next num elements of the RDD. This currently scans the partitions *one by one*, so
+   * it will be slow if a lot of partitions are required. In that case, use dropCollect(drop) to get the
+   * whole RDD instead.
+   */
+  def dropTake(drop: Int, num: Int): Array[T] = {
+    if (num == 0) {
+      return new Array[T](0)
+    }
+    val buf = new ArrayBuffer[T]
+    var p = 0
+    var dropped = 0
+    while (buf.size < num && p < partitions.size) {
+      val left = num - buf.size
+      val res = sc.runJob(this, (it: Iterator[T]) => {
+        while ((drop - dropped) > 0 && it.hasNext) {
+          it.next()
+          dropped += 1
+        }
+        it.take(left).toArray
+      }, Array(p), true)
+      buf ++= res(0)
+      if (buf.size == num)
+        return buf.toArray
+      p += 1
+    }
+    return buf.toArray
+  }
+
+  /**
    * Return the first element in this RDD.
    */
   def first(): T = take(1) match {
