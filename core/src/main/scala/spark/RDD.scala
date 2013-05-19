@@ -724,15 +724,22 @@ abstract class RDD[T: ClassManifest](
     }
     val buf = new ArrayBuffer[T]
     var p = 0
-    var dropped = 0
+    var dropped = sc.accumulator(0)
     while (buf.size < num && p < partitions.size) {
       val left = num - buf.size
+      val accDropped = dropped.value
+      //still in driver
       val res = sc.runJob(this, (it: Iterator[T]) => {
-        while ((drop - dropped) > 0 && it.hasNext) {
+        var leftToDrop = drop - accDropped
+        while (leftToDrop > 0 && it.hasNext) {
           it.next()
-          dropped += 1
+          leftToDrop -= 1
         }
-        it.take(left).toArray
+        //accumulate all that have been dropped here
+        dropped += drop - leftToDrop
+        //if still left to drop then don't take
+        val taken = if (leftToDrop > 0) it.take(0) else it.take(left)
+        taken.toArray
       }, Array(p), true)
       buf ++= res(0)
       if (buf.size == num)
