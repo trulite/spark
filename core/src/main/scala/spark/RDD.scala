@@ -715,8 +715,8 @@ abstract class RDD[T: ClassManifest](
 
   /**
    * Drop the first drop elements and then take next num elements of the RDD. This currently scans the partitions *one by one*, so
-   * it will be slow if a lot of partitions are required. In that case, use dropCollect(drop) to get the
-   * whole RDD instead.
+   * it will be slow if a lot of partitions are required. In that case, use collect().drop(drop) to get the
+   * whole RDD instead and drop the required drop elements.
    */
   def dropTake(drop: Int, num: Int): Array[T] = {
     if (num == 0) {
@@ -727,8 +727,8 @@ abstract class RDD[T: ClassManifest](
     var dropped = sc.accumulator(0)
     while (buf.size < num && p < partitions.size) {
       val left = num - buf.size
+      //read dropped so far from accumulator
       val accDropped = dropped.value
-      //still in driver
       val res = sc.runJob(this, (it: Iterator[T]) => {
         var leftToDrop = drop - accDropped
         while (leftToDrop > 0 && it.hasNext) {
@@ -736,7 +736,7 @@ abstract class RDD[T: ClassManifest](
           leftToDrop -= 1
         }
         //accumulate all that have been dropped here
-        dropped += drop - leftToDrop
+        dropped += (drop - accDropped) - leftToDrop
         //if still left to drop then don't take
         val taken = if (leftToDrop > 0) it.take(0) else it.take(left)
         taken.toArray

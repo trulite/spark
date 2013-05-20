@@ -27,7 +27,6 @@ class RDDSuite extends FunSuite with LocalSparkContext {
     assert(nums.glom().map(_.toList).collect().toList === List(List(1, 2), List(3, 4)))
     assert(nums.collect({ case i if i >= 3 => i.toString }).collect().toList === List("3", "4"))
     assert(nums.take(2).toList === List(1, 2))
-    assert(nums.dropTake(1,2).toList === List(2, 3))
     assert(nums.keyBy(_.toString).collect().toList === List(("1", 1), ("2", 2), ("3", 3), ("4", 4)))
     val partitionSums = nums.mapPartitions(iter => Iterator(iter.reduceLeft(_ + _)))
     assert(partitionSums.collect().toList === List(3, 7))
@@ -45,6 +44,16 @@ class RDDSuite extends FunSuite with LocalSparkContext {
     intercept[UnsupportedOperationException] {
       nums.filter(_ > 5).reduce(_ + _)
     }
+    val sixteen = sc.makeRDD(Array(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16), 4)
+    //drop none
+    assert(sixteen.dropTake(0, 2).toList === List(1, 2))
+    //drop only from first partition
+    assert(sixteen.dropTake(2, 2).toList === List(3, 4))
+    //drop(4+2) all 4 from first and 2 from second partition. take 2.
+    assert(sixteen.dropTake(6, 2).toList === List(7, 8))
+    //drop(4+4+2) all 4 from first and second and 2 from third partition and take 6 values.
+    //The take should spill over to the next partition
+    assert(sixteen.dropTake(10, 6).toList === List(11, 12, 13, 14, 15, 16))
   }
 
   test("SparkContext.union") {
